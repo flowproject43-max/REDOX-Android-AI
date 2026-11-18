@@ -1,18 +1,13 @@
 package com.redox.assistant
 
 import com.redox.assistant.automation.AutonomousAgent
+import com.redox.assistant.automation.DeviceAutomationManager
 import com.redox.assistant.domain.model.DeviceAction
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class AutonomousAgentTest {
-
-    @Test
-    fun testParseActionCommands() {
-        // Dummy manager not invoked for pure text parsing test
-        val agent = AutonomousAgent(automationManager = null as? com.redox.assistant.automation.DeviceAutomationManager ?: return)
-    }
 
     @Test
     fun testWakeWordDetectionRegex() {
