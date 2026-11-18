@@ -125,24 +125,36 @@ class DeviceAutomationManager(private val context: Context) {
             }
 
             is DeviceAction.AdjustVolume -> {
-                val maxVolume = audioManager.getStreamMaxVolume(AudioManager.STREAM_MUSIC)
-                val target = ((action.levelPercent / 100f) * maxVolume).toInt().coerceIn(0, maxVolume)
-                audioManager.setStreamVolume(AudioManager.STREAM_MUSIC, target, AudioManager.FLAG_SHOW_UI)
-                status = ActivityStatus.SUCCESS
-                resultDesc = "Media volume set to ${action.levelPercent}% ($target/$maxVolume)."
+                val am = audioManager
+                if (am != null) {
+                    val maxVolume = am.getStreamMaxVolume(AudioManager.STREAM_MUSIC)
+                    val target = ((action.levelPercent / 100f) * maxVolume).toInt().coerceIn(0, maxVolume)
+                    am.setStreamVolume(AudioManager.STREAM_MUSIC, target, AudioManager.FLAG_SHOW_UI)
+                    status = ActivityStatus.SUCCESS
+                    resultDesc = "Media volume set to ${action.levelPercent}% ($target/$maxVolume)."
+                } else {
+                    status = ActivityStatus.FAILED
+                    resultDesc = "Audio manager service unavailable."
+                }
             }
 
             is DeviceAction.MediaControl -> {
-                val keyCode = when (action.command.lowercase()) {
-                    "play", "pause", "toggle" -> KeyEvent.KEYCODE_MEDIA_PLAY_PAUSE
-                    "next" -> KeyEvent.KEYCODE_MEDIA_NEXT
-                    "previous", "prev" -> KeyEvent.KEYCODE_MEDIA_PREVIOUS
-                    else -> KeyEvent.KEYCODE_MEDIA_PLAY_PAUSE
+                val am = audioManager
+                if (am != null) {
+                    val keyCode = when (action.command.lowercase()) {
+                        "play", "pause", "toggle" -> KeyEvent.KEYCODE_MEDIA_PLAY_PAUSE
+                        "next" -> KeyEvent.KEYCODE_MEDIA_NEXT
+                        "previous", "prev" -> KeyEvent.KEYCODE_MEDIA_PREVIOUS
+                        else -> KeyEvent.KEYCODE_MEDIA_PLAY_PAUSE
+                    }
+                    am.dispatchMediaKeyEvent(KeyEvent(KeyEvent.ACTION_DOWN, keyCode))
+                    am.dispatchMediaKeyEvent(KeyEvent(KeyEvent.ACTION_UP, keyCode))
+                    status = ActivityStatus.SUCCESS
+                    resultDesc = "Media command '${action.command}' dispatched."
+                } else {
+                    status = ActivityStatus.FAILED
+                    resultDesc = "Audio transport service unavailable."
                 }
-                audioManager.dispatchMediaKeyEvent(KeyEvent(KeyEvent.ACTION_DOWN, keyCode))
-                audioManager.dispatchMediaKeyEvent(KeyEvent(KeyEvent.ACTION_UP, keyCode))
-                status = ActivityStatus.SUCCESS
-                resultDesc = "Media command '${action.command}' dispatched."
             }
 
             is DeviceAction.SetTimer -> {
