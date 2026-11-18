@@ -1,14 +1,17 @@
 package com.redox.assistant.service
 
+import android.Manifest
 import android.app.Notification
 import android.app.PendingIntent
 import android.app.Service
 import android.content.Context
 import android.content.Intent
+import android.content.pm.PackageManager
 import android.content.pm.ServiceInfo
 import android.os.Build
 import android.os.IBinder
 import androidx.core.app.NotificationCompat
+import androidx.core.content.ContextCompat
 import com.redox.assistant.MainActivity
 import com.redox.assistant.R
 import com.redox.assistant.RedoxApplication
@@ -25,15 +28,32 @@ class RedoxForegroundService : Service() {
 
     override fun onCreate() {
         super.onCreate()
-        val notification = createNotification("REDOX System Active", "Listening for 'Hey REDOX' wake word")
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
-            startForeground(
-                NOTIFICATION_ID,
-                notification,
-                ServiceInfo.FOREGROUND_SERVICE_TYPE_MICROPHONE
-            )
-        } else {
-            startForeground(NOTIFICATION_ID, notification)
+
+        try {
+            val hasMicPermission = ContextCompat.checkSelfPermission(
+                this,
+                Manifest.permission.RECORD_AUDIO
+            ) == PackageManager.PERMISSION_GRANTED
+
+            if (!hasMicPermission) {
+                // Cannot start microphone FGS on Android 14+ without RECORD_AUDIO permission
+                stopSelf()
+                return
+            }
+
+            val notification = createNotification("REDOX System Active", "Listening for 'Hey REDOX' wake word")
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+                startForeground(
+                    NOTIFICATION_ID,
+                    notification,
+                    ServiceInfo.FOREGROUND_SERVICE_TYPE_MICROPHONE
+                )
+            } else {
+                startForeground(NOTIFICATION_ID, notification)
+            }
+        } catch (e: Exception) {
+            e.printStackTrace()
+            stopSelf()
         }
     }
 
@@ -44,7 +64,7 @@ class RedoxForegroundService : Service() {
                 stopSelf()
             }
         }
-        return START_STICKY
+        return START_NOT_STICKY
     }
 
     private fun createNotification(title: String, content: String): Notification {
@@ -80,21 +100,36 @@ class RedoxForegroundService : Service() {
         const val ACTION_STOP_SERVICE = "com.redox.assistant.STOP_FOREGROUND"
 
         fun start(context: Context) {
-            val intent = Intent(context, RedoxForegroundService::class.java).apply {
-                action = ACTION_START_SERVICE
-            }
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-                context.startForegroundService(intent)
-            } else {
-                context.startService(intent)
+            val hasMicPermission = ContextCompat.checkSelfPermission(
+                context,
+                Manifest.permission.RECORD_AUDIO
+            ) == PackageManager.PERMISSION_GRANTED
+
+            if (!hasMicPermission) return
+
+            try {
+                val intent = Intent(context, RedoxForegroundService::class.java).apply {
+                    action = ACTION_START_SERVICE
+                }
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                    context.startForegroundService(intent)
+                } else {
+                    context.startService(intent)
+                }
+            } catch (e: Exception) {
+                e.printStackTrace()
             }
         }
 
         fun stop(context: Context) {
-            val intent = Intent(context, RedoxForegroundService::class.java).apply {
-                action = ACTION_STOP_SERVICE
+            try {
+                val intent = Intent(context, RedoxForegroundService::class.java).apply {
+                    action = ACTION_STOP_SERVICE
+                }
+                context.startService(intent)
+            } catch (e: Exception) {
+                e.printStackTrace()
             }
-            context.startService(intent)
         }
     }
 }

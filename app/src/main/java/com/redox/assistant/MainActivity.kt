@@ -1,10 +1,13 @@
 package com.redox.assistant
 
+import android.Manifest
+import android.content.pm.PackageManager
 import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.activity.viewModels
+import androidx.core.content.ContextCompat
 import com.redox.assistant.service.RedoxForegroundService
 import com.redox.assistant.ui.navigation.RedoxNavigation
 import com.redox.assistant.ui.theme.RedoxTheme
@@ -18,10 +21,19 @@ class MainActivity : ComponentActivity() {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
 
-        // Start background assistant service if enabled
+        // Safely check microphone permission before starting foreground service
+        val hasMicPermission = ContextCompat.checkSelfPermission(
+            this,
+            Manifest.permission.RECORD_AUDIO
+        ) == PackageManager.PERMISSION_GRANTED
+
         val voiceConfig = viewModel.voiceConfig.value
-        if (voiceConfig.wakeWordEnabled && voiceConfig.backgroundListening) {
-            RedoxForegroundService.start(this)
+        if (hasMicPermission && voiceConfig.wakeWordEnabled && voiceConfig.backgroundListening) {
+            try {
+                RedoxForegroundService.start(this)
+            } catch (e: Exception) {
+                e.printStackTrace()
+            }
         }
 
         setContent {

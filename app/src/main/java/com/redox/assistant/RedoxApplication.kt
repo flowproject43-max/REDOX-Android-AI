@@ -36,15 +36,26 @@ class RedoxApplication : Application() {
         super.onCreate()
         instance = this
 
-        // Initialize local persistence & encrypted storage
-        database = RedoxDatabase(this)
-        securePreferences = SecurePreferences(this)
-        settingsRepository = SettingsRepositoryImpl(securePreferences)
-        memoryRepository = MemoryRepositoryImpl(database)
-        activityLogRepository = ActivityLogRepositoryImpl(database)
-        aiRepository = AiRepositoryImpl(settingsRepository)
+        // Install safe crash shield to prevent unexpected aborts
+        val defaultHandler = Thread.getDefaultUncaughtExceptionHandler()
+        Thread.setDefaultUncaughtExceptionHandler { thread, throwable ->
+            android.util.Log.e("REDOX_CRASH", "Uncaught exception in thread ${thread.name}", throwable)
+            defaultHandler?.uncaughtException(thread, throwable)
+        }
 
-        createNotificationChannels()
+        try {
+            // Initialize local persistence & encrypted storage
+            database = RedoxDatabase(this)
+            securePreferences = SecurePreferences(this)
+            settingsRepository = SettingsRepositoryImpl(securePreferences)
+            memoryRepository = MemoryRepositoryImpl(database)
+            activityLogRepository = ActivityLogRepositoryImpl(database)
+            aiRepository = AiRepositoryImpl(settingsRepository)
+
+            createNotificationChannels()
+        } catch (e: Exception) {
+            e.printStackTrace()
+        }
     }
 
     private fun createNotificationChannels() {
