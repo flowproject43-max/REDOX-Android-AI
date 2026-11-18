@@ -21,15 +21,101 @@ class GeminiApiClient(
     private val gson: Gson = Gson()
 ) {
 
+    suspend fun listAvailableModels(apiKey: String): Result<List<String>> = withContext(Dispatchers.IO) {
+        try {
+            val url = "https://generativelanguage.googleapis.com/v1beta/models?key=$apiKey"
+            val request = Request.Builder().url(url).get().build()
+            val response = client.newCall(request).execute()
+            val respBody = response.body?.string() ?: ""
+
+            if (!response.isSuccessful) {
+                return@withContext Result.failure(Exception("Failed to list models (${response.code}): $respBody"))
+            }
+
+            val json = gson.fromJson(respBody, JsonObject::class.java)
+            val modelsArr = json.getAsJsonArray("models") ?: return@withContext Result.success(emptyList())
+
+            val modelList = mutableListOf<String>()
+            for (elem in modelsArr) {
+                val obj = elem.asJsonObject
+                val name = obj.get("name")?.asString ?: continue
+                val cleanName = name.removePrefix("models/")
+                val methods = obj.getAsJsonArray("supportedGenerationMethods")
+                val supportsGen = methods?.any { it.asString == "generateContent" } ?: false
+
+                if (supportsGen) {
+                    modelList.add(cleanName)
+                }
+            }
+
+            Result.success(modelList)
+        } catch (e: Exception) {
+            Result.failure(e)
+        }
+    }
+
     suspend fun generateResponse(
         apiKey: String,
-        modelName: String = "gemini-1.5-flash",
+        modelName: String = "gemini-2.0-flash",
         history: List<AiMessage>,
         prompt: String,
         screenContext: String? = null,
         memoryContext: String = ""
     ): Result<String> = withContext(Dispatchers.IO) {
-        try {
+        val candidateModels = linkedSetOf(
+            modelName,
+            "gemini-2.0-flash",
+            "gemini-2.0-flash-exp",
+            "gemini-1.5-flash-latest",
+            "gemini-1.5-flash-002",
+            "gemini-1.5-flash",
+            "gemini-1.5-pro",
+            "gemini-pro"
+        ).toList()
+
+        var lastError: Exception? = null
+
+        for (targetModel in candidateModels) {
+            val result = executeGenerateCall(apiKey, targetModel, history, prompt, screenContext, memoryContext)
+            if (result.isSuccess) {
+                return@withContext result
+            }
+
+            val err = result.exceptionOrNull()
+            lastError = err as? Exception ?: Exception(err?.message)
+
+            // If error is NOT a 404 model not found (e.g. invalid API key 400/403 or quota 429), break and return it
+            val errMsg = err?.message ?: ""
+            if (!errMsg.contains("404") && !errMsg.contains("not found", ignoreCase = true)) {
+                return@withContext result
+            }
+        }
+
+        // As a final fallback if all hardcoded candidate models fail with 404, dynamically query available models
+        val availableResult = listAvailableModels(apiKey)
+        if (availableResult.isSuccess) {
+            val available = availableResult.getOrNull().orEmpty()
+            for (dynamicModel in available) {
+                if (candidateModels.contains(dynamicModel)) continue
+                val result = executeGenerateCall(apiKey, dynamicModel, history, prompt, screenContext, memoryContext)
+                if (result.isSuccess) {
+                    return@withContext result
+                }
+            }
+        }
+
+        Result.failure(lastError ?: Exception("Unable to connect to Gemini API with any available model."))
+    }
+
+    private fun executeGenerateCall(
+        apiKey: String,
+        modelName: String,
+        history: List<AiMessage>,
+        prompt: String,
+        screenContext: String?,
+        memoryContext: String
+    ): Result<String> {
+        return try {
             val endpoint = "https://generativelanguage.googleapis.com/v1beta/models/$modelName:generateContent?key=$apiKey"
             val jsonMedia = "application/json; charset=utf-8".toMediaType()
 
@@ -122,7 +208,7 @@ class GeminiApiClient(
             val respBody = response.body?.string() ?: ""
 
             if (!response.isSuccessful) {
-                return@withContext Result.failure(Exception("Gemini API Error ${response.code}: $respBody"))
+                return Result.failure(Exception("Gemini API Error ${response.code}: $respBody"))
             }
 
             val jsonResponse = gson.fromJson(respBody, JsonObject::class.java)
@@ -130,10 +216,10 @@ class GeminiApiClient(
             if (candidates != null && candidates.size() > 0) {
                 val firstCandidate = candidates[0].asJsonObject
                 val content = firstCandidate.getAsJsonObject("content")
-                val parts = content.getAsJsonArray("parts")
+                val parts = content?.getAsJsonArray("parts")
                 if (parts != null && parts.size() > 0) {
-                    val text = parts[0].asJsonObject.get("text").asString
-                    return@withContext Result.success(text)
+                    val text = parts[0].asJsonObject.get("text")?.asString ?: ""
+                    return Result.success(text)
                 }
             }
 

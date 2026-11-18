@@ -5,7 +5,7 @@ enum class AiProvider(
     val defaultModel: String,
     val requiresApiKey: Boolean = true
 ) {
-    GEMINI("Google Gemini", "gemini-1.5-flash", true),
+    GEMINI("Google Gemini", "gemini-2.0-flash", true),
     OPENAI("OpenAI", "gpt-4o", true),
     CLAUDE("Anthropic Claude", "claude-3-5-sonnet-20241022", true),
     GROQ("Groq (Ultra-Fast)", "llama-3.3-70b-versatile", true),

@@ -59,6 +59,14 @@ class SettingsRepositoryImpl(
         prefs.putSecureString("api_key_${provider.name}", key)
     }
 
+    override suspend fun getModelName(provider: AiProvider): String {
+        return prefs.getString("model_name_${provider.name}", provider.defaultModel) ?: provider.defaultModel
+    }
+
+    override suspend fun setModelName(provider: AiProvider, model: String) {
+        prefs.putString("model_name_${provider.name}", model)
+    }
+
     override fun getVoiceConfig(): Flow<VoiceConfig> = voiceConfigFlow.asStateFlow()
 
     override suspend fun setVoiceConfig(config: VoiceConfig) {

@@ -11,6 +11,9 @@ interface SettingsRepository {
     suspend fun getApiKey(provider: AiProvider): String?
     suspend fun setApiKey(provider: AiProvider, key: String)
 
+    suspend fun getModelName(provider: AiProvider): String
+    suspend fun setModelName(provider: AiProvider, model: String)
+
     fun getVoiceConfig(): Flow<VoiceConfig>
     suspend fun setVoiceConfig(config: VoiceConfig)
 

@@ -14,12 +14,11 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.AutoAwesome
 import androidx.compose.material.icons.filled.Bolt
 import androidx.compose.material.icons.filled.CheckCircle
-import androidx.compose.material.icons.filled.Error
 import androidx.compose.material.icons.filled.Save
 import androidx.compose.material.icons.filled.Visibility
 import androidx.compose.material.icons.filled.VisibilityOff
@@ -40,7 +39,6 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.ui.unit.dp
@@ -68,14 +66,19 @@ fun AiProviderSettingsScreen(
     val scope = rememberCoroutineScope()
 
     var apiKeyInput by remember { mutableStateOf("") }
+    var modelNameInput by remember { mutableStateOf(activeProvider.defaultModel) }
     var isKeyVisible by remember { mutableStateOf(false) }
     var testResultText by remember { mutableStateOf<String?>(null) }
     var isTesting by remember { mutableStateOf(false) }
+    var discoveredModels by remember { mutableStateOf<List<String>>(emptyList()) }
+    var isDiscoveringModels by remember { mutableStateOf(false) }
 
-    // Load stored key for active provider
+    // Load stored key and model for active provider
     LaunchedEffect(activeProvider) {
         apiKeyInput = viewModel.settingsRepo.getApiKey(activeProvider) ?: ""
+        modelNameInput = viewModel.settingsRepo.getModelName(activeProvider)
         testResultText = null
+        discoveredModels = emptyList()
     }
 
     Column(
@@ -128,7 +131,7 @@ fun AiProviderSettingsScreen(
                                     fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal
                                 )
                                 Text(
-                                    text = "Model: ${provider.defaultModel}",
+                                    text = "Default: ${provider.defaultModel}",
                                     color = TextGrayMuted,
                                     fontSize = 11.sp,
                                     fontFamily = FontFamily.Monospace
@@ -136,6 +139,125 @@ fun AiProviderSettingsScreen(
                             }
                             if (isSelected) {
                                 Icon(Icons.Default.CheckCircle, null, tint = CrimsonRed)
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        // Model Configuration
+        GlassSettingsPanel(title = "Model Name (${activeProvider.displayName})") {
+            Text(
+                text = "Select recommended model or type exact model name:",
+                color = TextGraySecondary,
+                fontSize = 12.sp
+            )
+            Spacer(modifier = Modifier.height(8.dp))
+
+            // Quick Model Chips
+            val recommendedModels = when (activeProvider) {
+                AiProvider.GEMINI -> listOf("gemini-2.0-flash", "gemini-1.5-flash-latest", "gemini-1.5-flash", "gemini-1.5-pro")
+                AiProvider.GROQ -> listOf("llama-3.3-70b-versatile", "llama-3.1-8b-instant")
+                AiProvider.OPENAI -> listOf("gpt-4o", "gpt-4o-mini")
+                AiProvider.OPENROUTER -> listOf("google/gemini-2.0-flash-exp:free", "meta-llama/llama-3.3-70b-instruct:free")
+                AiProvider.CLAUDE -> listOf("claude-3-5-sonnet-20241022", "claude-3-5-haiku-20241022")
+            }
+
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(6.dp)
+            ) {
+                recommendedModels.take(3).forEach { model ->
+                    val isChosen = modelNameInput == model
+                    Box(
+                        modifier = Modifier
+                            .clip(RoundedCornerShape(8.dp))
+                            .background(if (isChosen) CrimsonRed else Color(0x22FFFFFF))
+                            .border(1.dp, if (isChosen) Color.White else GlassBorder, RoundedCornerShape(8.dp))
+                            .clickable {
+                                modelNameInput = model
+                                viewModel.saveModelName(activeProvider, model)
+                            }
+                            .padding(horizontal = 8.dp, vertical = 6.dp)
+                    ) {
+                        Text(
+                            text = model.removePrefix("models/"),
+                            color = if (isChosen) Color.White else TextGraySecondary,
+                            fontSize = 11.sp,
+                            fontFamily = FontFamily.Monospace
+                        )
+                    }
+                }
+            }
+
+            Spacer(modifier = Modifier.height(10.dp))
+
+            GlassTextField(
+                value = modelNameInput,
+                onValueChange = {
+                    modelNameInput = it
+                    viewModel.saveModelName(activeProvider, it)
+                },
+                placeholder = "Active Model Identifier"
+            )
+
+            // Auto-Discovery Button for Gemini
+            if (activeProvider == AiProvider.GEMINI && apiKeyInput.isNotBlank()) {
+                Spacer(modifier = Modifier.height(10.dp))
+                GlassButton(
+                    text = if (isDiscoveringModels) "Scanning Available Models..." else "Auto-Detect Supported Models",
+                    icon = Icons.Default.AutoAwesome,
+                    onClick = {
+                        isDiscoveringModels = true
+                        scope.launch {
+                            val res = viewModel.geminiClient.listAvailableModels(apiKeyInput)
+                            isDiscoveringModels = false
+                            if (res.isSuccess) {
+                                val models = res.getOrNull().orEmpty()
+                                discoveredModels = models
+                                if (models.isNotEmpty() && !models.contains(modelNameInput)) {
+                                    val best = models.firstOrNull { it.contains("flash") } ?: models.first()
+                                    modelNameInput = best
+                                    viewModel.saveModelName(activeProvider, best)
+                                }
+                            } else {
+                                testResultText = "Model scan failed: ${res.exceptionOrNull()?.message}"
+                            }
+                        }
+                    },
+                    modifier = Modifier.fillMaxWidth()
+                )
+
+                if (discoveredModels.isNotEmpty()) {
+                    Spacer(modifier = Modifier.height(8.dp))
+                    Text(
+                        text = "Models active on your API Key (tap to select):",
+                        color = Color(0xFF69F0AE),
+                        fontSize = 11.sp,
+                        fontFamily = FontFamily.Monospace
+                    )
+                    Spacer(modifier = Modifier.height(4.dp))
+                    Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                        discoveredModels.forEach { dModel ->
+                            val isSelected = modelNameInput == dModel
+                            Box(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .clip(RoundedCornerShape(6.dp))
+                                    .background(if (isSelected) Color(0x33FF1744) else Color(0x11FFFFFF))
+                                    .clickable {
+                                        modelNameInput = dModel
+                                        viewModel.saveModelName(activeProvider, dModel)
+                                    }
+                                    .padding(horizontal = 8.dp, vertical = 6.dp)
+                            ) {
+                                Text(
+                                    text = if (isSelected) "▶ $dModel (Selected)" else "• $dModel",
+                                    color = if (isSelected) CrimsonRed else TextWhitePrimary,
+                                    fontSize = 12.sp,
+                                    fontFamily = FontFamily.Monospace
+                                )
                             }
                         }
                     }
@@ -180,7 +302,8 @@ fun AiProviderSettingsScreen(
                     icon = Icons.Default.Save,
                     onClick = {
                         viewModel.saveApiKey(activeProvider, apiKeyInput)
-                        testResultText = "API key saved securely."
+                        viewModel.saveModelName(activeProvider, modelNameInput)
+                        testResultText = "API key and model '$modelNameInput' saved securely."
                     },
                     isPrimary = true,
                     modifier = Modifier.weight(1f)
@@ -193,10 +316,12 @@ fun AiProviderSettingsScreen(
                         if (apiKeyInput.isNotBlank()) {
                             isTesting = true
                             scope.launch {
+                                viewModel.saveModelName(activeProvider, modelNameInput)
                                 val result = viewModel.aiRepo.testConnection(activeProvider, apiKeyInput)
                                 isTesting = false
                                 testResultText = if (result.isSuccess) {
-                                    "✓ ONLINE — Latency: ${result.getOrNull()} ms"
+                                    val currentModel = viewModel.settingsRepo.getModelName(activeProvider)
+                                    "✓ ONLINE ($currentModel) — Latency: ${result.getOrNull()} ms"
                                 } else {
                                     "✗ FAILED: ${result.exceptionOrNull()?.message}"
                                 }

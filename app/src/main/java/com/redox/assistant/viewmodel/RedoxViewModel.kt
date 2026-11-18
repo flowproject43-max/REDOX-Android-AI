@@ -251,6 +251,14 @@ class RedoxViewModel(application: Application) : AndroidViewModel(application) {
         }
     }
 
+    val geminiClient = com.redox.assistant.data.remote.GeminiApiClient()
+
+    fun saveModelName(provider: AiProvider, model: String) {
+        viewModelScope.launch {
+            settingsRepo.setModelName(provider, model)
+        }
+    }
+
     fun updateVoiceConfig(config: VoiceConfig) {
         viewModelScope.launch {
             settingsRepo.setVoiceConfig(config)

@@ -75,11 +75,13 @@ class AiRepositoryImpl(
             return Result.failure(Exception("API Key missing for ${provider.displayName}. Please configure it in AI Provider Settings."))
         }
 
+        val configuredModel = settingsRepository.getModelName(provider)
+
         return when (provider) {
             AiProvider.GEMINI -> {
                 geminiClient.generateResponse(
                     apiKey = apiKey,
-                    modelName = provider.defaultModel,
+                    modelName = configuredModel,
                     history = history,
                     prompt = prompt,
                     screenContext = screenContext,
@@ -90,7 +92,7 @@ class AiRepositoryImpl(
                 openAiClient.generateResponse(
                     endpointUrl = "https://api.openai.com/v1/chat/completions",
                     apiKey = apiKey,
-                    modelName = provider.defaultModel,
+                    modelName = configuredModel,
                     history = history,
                     prompt = prompt,
                     screenContext = screenContext,
@@ -101,7 +103,7 @@ class AiRepositoryImpl(
                 openAiClient.generateResponse(
                     endpointUrl = "https://api.groq.com/openai/v1/chat/completions",
                     apiKey = apiKey,
-                    modelName = provider.defaultModel,
+                    modelName = configuredModel,
                     history = history,
                     prompt = prompt,
                     screenContext = screenContext,
@@ -112,7 +114,7 @@ class AiRepositoryImpl(
                 openAiClient.generateResponse(
                     endpointUrl = "https://openrouter.ai/api/v1/chat/completions",
                     apiKey = apiKey,
-                    modelName = provider.defaultModel,
+                    modelName = configuredModel,
                     history = history,
                     prompt = prompt,
                     screenContext = screenContext,
@@ -122,7 +124,7 @@ class AiRepositoryImpl(
             AiProvider.CLAUDE -> {
                 claudeClient.generateResponse(
                     apiKey = apiKey,
-                    modelName = provider.defaultModel,
+                    modelName = configuredModel,
                     history = history,
                     prompt = prompt,
                     screenContext = screenContext,
@@ -156,12 +158,13 @@ class AiRepositoryImpl(
     override suspend fun testConnection(provider: AiProvider, apiKey: String): Result<Long> {
         val startTime = System.currentTimeMillis()
         val testPrompt = "Ping. Respond with one word: 'ONLINE'."
+        val configuredModel = settingsRepository.getModelName(provider)
         val result = when (provider) {
-            AiProvider.GEMINI -> geminiClient.generateResponse(apiKey, provider.defaultModel, emptyList(), testPrompt)
-            AiProvider.OPENAI -> openAiClient.generateResponse("https://api.openai.com/v1/chat/completions", apiKey, provider.defaultModel, emptyList(), testPrompt)
-            AiProvider.GROQ -> openAiClient.generateResponse("https://api.groq.com/openai/v1/chat/completions", apiKey, provider.defaultModel, emptyList(), testPrompt)
-            AiProvider.OPENROUTER -> openAiClient.generateResponse("https://openrouter.ai/api/v1/chat/completions", apiKey, provider.defaultModel, emptyList(), testPrompt)
-            AiProvider.CLAUDE -> claudeClient.generateResponse(apiKey, provider.defaultModel, emptyList(), testPrompt)
+            AiProvider.GEMINI -> geminiClient.generateResponse(apiKey, configuredModel, emptyList(), testPrompt)
+            AiProvider.OPENAI -> openAiClient.generateResponse("https://api.openai.com/v1/chat/completions", apiKey, configuredModel, emptyList(), testPrompt)
+            AiProvider.GROQ -> openAiClient.generateResponse("https://api.groq.com/openai/v1/chat/completions", apiKey, configuredModel, emptyList(), testPrompt)
+            AiProvider.OPENROUTER -> openAiClient.generateResponse("https://openrouter.ai/api/v1/chat/completions", apiKey, configuredModel, emptyList(), testPrompt)
+            AiProvider.CLAUDE -> claudeClient.generateResponse(apiKey, configuredModel, emptyList(), testPrompt)
         }
         val latency = System.currentTimeMillis() - startTime
         return if (result.isSuccess) {
