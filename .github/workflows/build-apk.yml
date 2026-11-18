@@ -1,0 +1,134 @@
+name: REDOX Android AI - Build & Release APK
+
+on:
+  push:
+    branches: [ "main" ]
+    tags:
+      - 'v*'
+  pull_request:
+    branches: [ "main" ]
+  workflow_dispatch:
+    inputs:
+      create_release:
+        description: 'Create GitHub Release with APKs'
+        required: false
+        type: boolean
+        default: true
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    name: Build & Verify APKs
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+
+    steps:
+      - name: Checkout Source Code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: 'temurin'
+          java-version: '17'
+
+      - name: Setup Android SDK
+        uses: android-actions/setup-android@v3
+
+      - name: Setup Gradle
+        uses: gradle/actions/setup-gradle@v4
+        with:
+          cache-read-only: false
+
+      - name: Make Gradle Wrapper Executable
+        run: chmod +x gradlew
+
+      - name: Run Unit Tests
+        run: ./gradlew testDebugUnitTest --no-daemon --stacktrace
+
+      - name: Build Debug APK
+        run: ./gradlew assembleDebug --no-daemon --stacktrace
+
+      - name: Build Release APK
+        run: ./gradlew assembleRelease --no-daemon --stacktrace
+
+      - name: Organize APK Artifacts & Calculate SHA-256
+        run: |
+          mkdir -p release-artifacts
+          
+          # Copy Debug APK
+          if [ -f app/build/outputs/apk/debug/app-debug.apk ]; then
+            cp app/build/outputs/apk/debug/app-debug.apk release-artifacts/REDOX-Assistant-debug.apk
+          fi
+          
+          # Copy Release APK
+          if [ -f app/build/outputs/apk/release/app-release.apk ]; then
+            cp app/build/outputs/apk/release/app-release.apk release-artifacts/REDOX-Assistant-release.apk
+          elif [ -f app/build/outputs/apk/release/app-release-unsigned.apk ]; then
+            cp app/build/outputs/apk/release/app-release-unsigned.apk release-artifacts/REDOX-Assistant-release.apk
+          fi
+          
+          cd release-artifacts
+          sha256sum *.apk > checksums.sha256
+          echo "Generated SHA-256 Checksums:"
+          cat checksums.sha256
+          cd ..
+
+      - name: Upload Debug APK Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: REDOX-Debug-APK
+          path: release-artifacts/REDOX-Assistant-debug.apk
+          retention-days: 30
+
+      - name: Upload Release APK Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: REDOX-Release-APK
+          path: release-artifacts/REDOX-Assistant-release.apk
+          retention-days: 30
+
+      - name: Upload SHA-256 Checksums
+        uses: actions/upload-artifact@v4
+        with:
+          name: REDOX-Checksums
+          path: release-artifacts/checksums.sha256
+          retention-days: 30
+
+      - name: Create GitHub Release
+        if: (startsWith(github.ref, 'refs/tags/v') || github.event.inputs.create_release == 'true' || github.ref == 'refs/heads/main')
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ startsWith(github.ref, 'refs/tags/v') && github.ref_name || 'v1.0.0-preview' }}
+          name: "REDOX AI Assistant ${{ startsWith(github.ref, 'refs/tags/v') && github.ref_name || 'v1.0.0' }}"
+          draft: false
+          prerelease: false
+          generate_release_notes: true
+          files: |
+            release-artifacts/REDOX-Assistant-debug.apk
+            release-artifacts/REDOX-Assistant-release.apk
+            release-artifacts/checksums.sha256
+          body: |
+            ## 🔴 REDOX AI — Autonomous Android Voice Assistant
+            **Built with Jetpack Compose & Clean Architecture**
+
+            ### 🚀 Features Included:
+            - **Liquid Glass UI:** Pure Black (#050505) × Crimson Red (#FF1744) aesthetic with animated Energy Orb.
+            - **Multi-Provider AI Brain:** Gemini (1.5/2.0 Flash), OpenAI (GPT-4o), Claude, Groq, OpenRouter with automatic fallback.
+            - **Jarvis-Style Cinematic Voice:** Deep pitch & cadence tuning, continuous speech recognition, VAD, interruptible playback.
+            - **Wake Word Detection:** "Hey REDOX" voice activation & background foreground service.
+            - **Device Automation:** Full Accessibility Service for app opening, button clicking, typing, scrolling, flashlight, volume, phone calls, SMS & WhatsApp messaging.
+            - **Multimodal Vision:** Screen OCR, UI hierarchy inspection, screenshot analysis via Gemini Vision API.
+            - **Long-Term Memory:** Local SQLite/Room contextual memory database.
+            - **Privacy & Security:** Android Keystore API key encryption, activity audit logs, sensitive action confirmation.
+
+            ### 📦 Checksums (SHA-256):
+            Refer to attached `checksums.sha256` for integrity verification.
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

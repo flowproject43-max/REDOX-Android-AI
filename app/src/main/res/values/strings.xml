@@ -1,0 +1,7 @@
+<resources>
+    <string name="app_name">REDOX</string>
+    <string name="accessibility_service_description">REDOX Autonomous Assistant Service enables automated screen reading, element interaction, gesture execution, and hands-free device navigation.</string>
+    <string name="notification_channel_name">REDOX Assistant Channel</string>
+    <string name="notification_channel_desc">Active background status and voice assistant monitor</string>
+    <string name="wake_word_phrase">Hey REDOX</string>
+</resources>
